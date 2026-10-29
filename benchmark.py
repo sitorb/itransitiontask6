@@ -1,71 +1,71 @@
 
-import os
 import time
+import statistics
 import mysql.connector
+from getpass import getpass
 
-DB_CONFIG = {
-    "host": os.getenv("DB_HOST", "127.0.0.1"),
-    "port": int(os.getenv("DB_PORT", "3306")),
-    "user": os.getenv("DB_USER", "root"),
-    "password": os.getenv("DB_PASSWORD", ""),
-    "database": os.getenv("DB_NAME", "faker_db"),
+# Aiven database connection
+config = {
+    "host": "mysql-3480df3-sitorb.i.aivencloud.com",
+    "port": 25780,
+    "user": "avnadmin",
+    "password": getpass("Enter your Aiven password: "),
+    "database": "defaultdb",
+    "ssl_disabled": False,
 }
 
-LOCALE = "en_US"
-SEED = 42
-BATCH_INDEX = 0
-BATCH_SIZES = [10, 100, 500, 1000]
+BATCH_SIZE = 1000
 REPEATS = 3
+SEED = 42
+LOCALE = "en_US"
 
-connection = mysql.connector.connect(**DB_CONFIG)
+connection = mysql.connector.connect(**config)
 cursor = connection.cursor()
 
-try:
-    # Warm-up: initialize the connection and stored procedure.
+def generate_and_measure(batch_size, batch_index=0):
+    start = time.perf_counter()
+
     cursor.callproc(
         "generate_users",
-        (SEED, LOCALE, 0, 1)
+        [SEED, LOCALE, batch_index, batch_size]
     )
+
+    # Fetch all generated records
     for result in cursor.stored_results():
         result.fetchall()
 
-    print("Locale:", LOCALE)
-    print("Seed:", SEED)
-    print("Repeats per batch size:", REPEATS)
-    print()
+    elapsed = time.perf_counter() - start
+    return elapsed
 
-    for batch_size in BATCH_SIZES:
-        elapsed_times = []
+try:
+    # Warm-up: not included in the benchmark
+    print("Running warm-up...")
+    generate_and_measure(100)
 
-        for repeat in range(REPEATS):
-            start = time.perf_counter()
+    # Actual measurements
+    times = []
 
-            cursor.callproc(
-                "generate_users",
-                (SEED, LOCALE, BATCH_INDEX, batch_size)
-            )
+    for i in range(REPEATS):
+        elapsed = generate_and_measure(BATCH_SIZE)
+        times.append(elapsed)
 
-            rows = []
-            for result in cursor.stored_results():
-                rows.extend(result.fetchall())
-
-            elapsed = time.perf_counter() - start
-
-            if len(rows) != batch_size:
-                raise RuntimeError(
-                    f"Expected {batch_size} rows, got {len(rows)}"
-                )
-
-            elapsed_times.append(elapsed)
-
-        average_seconds = sum(elapsed_times) / len(elapsed_times)
-        users_per_second = batch_size / average_seconds
-
+        speed = BATCH_SIZE / elapsed
         print(
-            f"Batch size: {batch_size:4d} | "
-            f"Average time: {average_seconds:.4f} s | "
-            f"Throughput: {users_per_second:.2f} users/s"
+            f"Run {i + 1}: {elapsed:.3f} seconds "
+            f"({speed:.2f} users/second)"
         )
+
+    average_time = statistics.mean(times)
+    average_speed = BATCH_SIZE / average_time
+    median_time = statistics.median(times)
+    median_speed = BATCH_SIZE / median_time
+
+    print("\n--- BENCHMARK RESULTS ---")
+    print(f"Users per run: {BATCH_SIZE}")
+    print(f"Number of runs: {REPEATS}")
+    print(f"Average time: {average_time:.3f} seconds")
+    print(f"Average speed: {average_speed:.2f} users/second")
+    print(f"Median speed: {median_speed:.2f} users/second")
 
 finally:
     cursor.close()
