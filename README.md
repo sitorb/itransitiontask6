@@ -2,72 +2,111 @@
 
 **Author:** Sitora Bakhronova
 
-## Overview
+A Python web application that generates reproducible synthetic contact information using MySQL stored procedures. The application uses Streamlit as its user interface and supports two locales: `en_US` and `de_DE`.
 
-A Python web application that generates reproducible fake contact information using MySQL stored procedures. The application uses Streamlit for its user interface and allows users to generate data for two locales: `en_US` and `de_DE`.
+## Live Demo
+
+- **Streamlit Application:** https://itransitiontask6-mgqwzfbnktyivrybv46czx.streamlit.app/
+- **Video Demonstration:** https://youtu.be/WcHmjVtxIFs?si=wXQc2bYfSPH5Qo0A
 
 ## Features
 
 - Supports English (United States) and German (Germany) locales.
-- Accepts a random seed to make generated records reproducible.
-- Supports batch generation with a batch index and batch size.
+- Uses a random seed to ensure reproducible data generation.
+- Supports batch generation with configurable batch index and batch size.
 - Generates names, addresses, geographic coordinates, physical attributes, eye colors, phone numbers, and email addresses.
 - Displays generated records in a table.
 - Allows users to download generated records as a CSV file.
-- Performs data generation in MySQL stored procedures rather than Python.
+- Performs data generation directly in MySQL using stored procedures and functions rather than Python.
 
 ## Technologies
 
-- Python
+- Python 3
 - MySQL 8
 - Streamlit
-- `mysql-connector-python`
+- mysql-connector-python
 - Pandas
 
 ## Generated Data
 
-Each generated record contains:
+Each generated record contains the following fields:
 
 | Field | Description |
 |---|---|
 | `user_position` | Position of the record in the generated sequence |
 | `locale` | Selected locale |
-| `gender` | Generated gender category used for name and email generation |
-| `full_name` | Generated full name with variations |
+| `gender` | Generated gender category |
+| `full_name` | Generated full name |
 | `address` | Generated address |
 | `latitude` | Geographic latitude |
 | `longitude` | Geographic longitude |
-| `height_cm` | Normally distributed height, with mean 170 cm and standard deviation 10 cm |
-| `weight_kg` | Normally distributed weight, with mean 70 kg and standard deviation 15 kg |
+| `height_cm` | Height generated using a normal distribution (mean: 170 cm, standard deviation: 10 cm) |
+| `weight_kg` | Weight generated using a normal distribution (mean: 70 kg, standard deviation: 15 kg) |
 | `eye_color` | Eye color selected according to configured probabilities |
-| `phone` | Generated phone number using locale-specific formatting |
+| `phone` | Phone number generated using locale-specific formatting |
 | `email` | Generated email address |
 
 ## Database Design and Stored Procedures
 
-The project uses the `faker_db` MySQL database. Lookup tables store locale-specific names, cities, streets, email domains, phone formats, address formats, and eye colors.
+The project uses a MySQL database with lookup tables containing locale-specific data, including names, cities, streets, email domains, phone formats, address formats, and eye colors.
 
-The main procedure is `generate_users(seed, locale, batch_index, batch_size)`. It validates the inputs, generates each record by calling helper routines, and returns the requested batch.
+### Main Stored Procedure
 
-Helper routines divide the work into smaller tasks:
+The main procedure is:
 
-- `gen_gender` — selects the gender category deterministically.
-- `gen_name` — generates a full name with variations.
-- `gen_address` — formats an address from locale-specific data.
-- `gen_phone` — generates a formatted phone number.
-- `gen_email` — generates an email address.
-- `rand_unit` — produces a deterministic pseudo-random value.
-- `rand_int` and `pick_value` — select integer values and lookup entries.
-- `rand_normal` — generates normally distributed values using the Box–Muller transform.
-- `rand_lat` and `rand_lon` — generate geographic coordinates.
-- `rand_eye_color` — selects an eye color according to configured probabilities.
-- `slugify` — converts text into a suitable email-address component.
+```sql
+CALL generate_users(seed, locale, batch_index, batch_size);
+```
 
-## Reproducibility and Batches
+Parameters:
 
-The seed, locale, record position, and helper-specific salt determine the generated values. Using the same seed, locale, batch index, and batch size produces the same results, provided the database lookup data and stored procedure definitions remain unchanged.
+- `seed` — integer used to initialize deterministic pseudo-random generation.
+- `locale` — supported locale (`en_US` or `de_DE`).
+- `batch_index` — index of the requested batch, starting from zero.
+- `batch_size` — number of records to generate.
 
-The batch index and batch size determine the starting record position and the number of records returned.
+Example:
+
+```sql
+CALL generate_users(42, 'en_US', 0, 100);
+```
+
+This generates the first batch of 100 users.
+
+### Helper Functions
+
+| Function | Responsibility |
+|---|---|
+| `gen_gender` | Selects a gender category deterministically |
+| `gen_name` | Generates a full name |
+| `gen_address` | Generates a formatted address |
+| `gen_phone` | Generates a locale-specific phone number |
+| `gen_email` | Generates an email address |
+| `rand_unit` | Produces a deterministic pseudo-random value |
+| `rand_int` | Generates deterministic integer values within a specified range |
+| `pick_value` | Selects an entry from lookup tables |
+| `rand_normal` | Generates normally distributed values using the Box–Muller transform |
+| `rand_lat` | Generates geographic latitude |
+| `rand_lon` | Generates geographic longitude |
+| `rand_eye_color` | Selects an eye color according to configured probabilities |
+| `slugify` | Converts text into a suitable email-address component |
+
+## Reproducibility and Batch Generation
+
+The generator uses the seed, locale, record position, and helper-specific salt to determine generated values.
+
+Using the same seed, locale, batch index, and batch size produces the same results, provided that the lookup data and stored procedure definitions remain unchanged.
+
+Batch generation allows records to be generated in separate groups.
+
+For example:
+
+```sql
+CALL generate_users(42, 'en_US', 0, 100);
+CALL generate_users(42, 'en_US', 1, 100);
+```
+
+The first call generates records with positions 0–99, while the second generates positions 100–199.
 
 ## Installation and Configuration
 
@@ -75,17 +114,17 @@ The batch index and batch size determine the starting record position and the nu
 
 - Python 3
 - MySQL Server 8
-- The project database, lookup data, functions, and stored procedures
+- Project database, lookup data, stored functions, and stored procedure
 
-### Install Python dependencies
+### Install Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### Configure the database connection
+### Configure Database Connection
 
-Set these environment variables to match your MySQL installation:
+Set the following environment variables according to your MySQL configuration:
 
 - `DB_HOST`
 - `DB_PORT`
@@ -93,7 +132,7 @@ Set these environment variables to match your MySQL installation:
 - `DB_PASSWORD`
 - `DB_NAME`
 
-For example, in Bash:
+Example for a local MySQL installation:
 
 ```bash
 export DB_HOST='127.0.0.1'
@@ -103,34 +142,66 @@ export DB_PASSWORD='YOUR_MYSQL_PASSWORD'
 export DB_NAME='faker_db'
 ```
 
-Do not commit your real database password to the repository.
+For deployment, configure the corresponding database credentials securely in the hosting platform's secrets or environment settings.
 
-### Run the application
+**Never commit real database credentials to GitHub.**
+
+### Run the Application Locally
 
 ```bash
 python -m streamlit run app.py
 ```
 
-Open the local URL printed by Streamlit, usually `http://localhost:8501`.
+Open the local URL provided by Streamlit, usually:
+
+```text
+http://localhost:8501
+```
 
 ## Benchmark
 
-**Environment:** Complete this with your operating system, CPU, RAM, and MySQL/Python versions.
+The benchmark measures the end-to-end performance of generating fake user records using the remote Aiven MySQL database.
 
-**Test configuration:** Record the locale, seed, and batch size used for each measurement.
+### Test Configuration
 
-**Measured performance:** Add the actual number of records generated per second. See the Benchmark section in this README's preparation notes before submitting.
+- Database: Aiven MySQL
+- Locale: `en_US`
+- Seed: `42`
+- Batch size: `1,000` users
+- Number of measured runs: `3`
+- Warm-up: `100` users (excluded from measurements)
+- Measurement tool: Python `time.perf_counter()`
+
+### Results
+
+| Metric | Result |
+|---|---:|
+| Users per run | 1,000 |
+| Number of runs | 3 |
+| Average execution time | 8.367 seconds |
+| Average generation speed | **119.52 users/second** |
+| Median generation speed | 120.07 users/second |
+
+Generation speed is calculated as:
+
+```text
+Generation speed = Number of generated users / Execution time
+```
+
+The measurement includes stored procedure execution and fetching the generated records from the remote database. Therefore, it represents end-to-end throughput, including network transfer.
 
 ## Limitations
 
-- Output quality depends on the lookup data provided for each locale.
-- Reproducibility depends on keeping the lookup tables and stored procedure definitions unchanged.
+- Output quality depends on the lookup data available for each locale.
+- Reproducibility depends on keeping lookup tables and stored procedure definitions unchanged.
 - Generated contact details are synthetic and should not be treated as verified real-world information.
 
-## Submission
+## Project Links
 
-- **Author:** Sitora Bakhronova
-- **Source code:** Add your repository URL.
-- **Documentation:** Add the URL to this README after publishing it.
-- **Demo video:** Add your recording URL.
-- **Deployed application:** Add the URL if deployment is required and completed.
+- **GitHub Repository:** https://github.com/sitorb/itransitiontask6
+- **Live Application:** https://itransitiontask6-mgqwzfbnktyivrybv46czx.streamlit.app/
+- **Video Demonstration:** https://youtu.be/WcHmjVtxIFs?si=wXQc2bYfSPH5Qo0A
+
+## Author
+
+**Sitora Bakhronova**
